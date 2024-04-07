@@ -193,9 +193,3 @@ else:
 # Starten des Servers und Behandeln von Anfragen
 server = start_server()
 handle_requests(server)
-
-
-
-
-
-

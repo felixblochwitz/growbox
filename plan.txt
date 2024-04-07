@@ -1,0 +1,26 @@
+Welche Funktionalität soll Pico haben:
+
+### Funktionalität der Growbox
+- Temperaturmessung
+- Luftfeuchtigkeitsmessung
+- Bewässerung
+    - Bodenfeuchtigkeitsmessung
+    - Wasserstandsmessung
+    - Steuerung Pumpe für Bewässerung
+- Lichtfrequenzkontrolle
+- Steuerung der Beleuchtung
+    - Lichfrequenz steuern
+    - Beleuchtungszyklus steuern
+    - Licht bewegen (hoch / runter)
+    - Abstandsmessung Pflanzen - Licht
+- Ventilator (für Pflanzenbewegung)
+- Lüftung
+- Display
+    - anzeige von metriken
+    - steuerung des diplays um verschiedene metriken anzeigen zu können
+
+### Datenspeicherung
+- Ablage der Sensordaten auf einer CSV
+
+### Steuerung der Growbox
+- Optimalerweise über eine App
