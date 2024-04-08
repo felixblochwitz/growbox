@@ -3,11 +3,7 @@ import utime
 import network
 import socket
 from time import sleep
-from dht import DHT11
 import json  # Dieser Import fehlte
-
-
-
 
 # Initialisierung des ADC4 für den Onboard-Temperatursensor
 sensor_temp = ADC(4)
@@ -17,46 +13,81 @@ def format_datetime_custom(dt):
     year, month, day, hour, minute, second, _, _ = dt
     return "{:04d}/{:02d}/{:02d}-{:02d}:{:02d}:{:02d}".format(year, month, day, hour, minute, second)
 
-# Initialisierung des DHT11-Sensors
-dht11_sensor = DHT11(Pin(14, Pin.IN, Pin.PULL_UP))
+def read_csv(filename, n=5):
+    with open(filename, 'r') as file:
+        lines = []
+        for line in file:
+            if len(lines) >= n:
+                lines.pop(0)
+            lines.append(line.strip())
+    data = []
+    for line in lines:
+        date, onboard_temp = line.split(',')[:2]  # Anpassung hier
+        data.append({
+            "date": date,
+            "onboard_temp": float(onboard_temp),
+        })
+    return data
 
-# Funktion zum Schreiben in eine CSV-Datei
-def write_csv(filename, date, onboard_temp, external_temp, humidity):
+# Anpassung der Funktion zum Schreiben in eine CSV-Datei
+def write_csv(filename, date, onboard_temp):
     with open(filename, 'a') as csvfile:
-        csvfile.write(f"{date},{onboard_temp},{external_temp},{humidity}\n")
+        csvfile.write(f"{date},{onboard_temp}\n")  # Entfernen von external_temp und humidity
 
-# Funktion zum Schreiben in eine HTML-Datei
-def write_html(filename, onboard_temp, external_temp, humidity):
+def send_csv_data(client):
+    print("here")
+    data = read_csv('Temperatur_und_Luftfeuchtigkeit.csv', 5)  # Lese die letzten 5 Zeilen
+    response = json.dumps(data)
+    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
+    client.close()
+        
+def send_sensor_data(client):
+    data = {
+        "onboard_temp": latest_onboard_temp,
+        "external_temp": latest_external_temp,
+        "humidity": latest_humidity
+    }
+    response = json.dumps(data)
+    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
+    client.close()
+
+# Globale Variablen für die zuletzt gemessenen Werte
+latest_onboard_temp = None
+
+def read_sensors_and_write_to_csv(timer):
+    global latest_onboard_temp, latest_external_temp, latest_humidity
+    # Aktuelle Uhrzeit erfassen
+    current_time = utime.localtime()
+    date = format_datetime_custom(current_time)
+    
+    # Onboard-Temperatur-Sensor als Dezimalzahl lesen und umrechnen
+    read_onboard = sensor_temp.read_u16()
+    voltage = read_onboard * conversion_factor
+    onboard_temp = 27 - (voltage - 0.706) / 0.001721
+    
+    
+    # Aktualisiere globale Variablen mit den neuesten Werten
+    latest_onboard_temp = onboard_temp
+
+    
+    # Printen der Daten in der Ausgabe
+    print("Datum: ", date)
+    print("Onboard Temperatur (°C): ", onboard_temp)
+
+    # Schreibe die Daten in die CSV-Datei und aktualisiere ggf. die HTML-Seite
+    write_csv('Temperatur_und_Luftfeuchtigkeit.csv', date, onboard_temp)
+    # Die write_html Funktion nicht hier aufrufen, da sie bei Serveranfragen aufgerufen wird
+
+
+
+
+# Angepasste Funktion zum Schreiben in eine HTML-Datei
+def write_html(filename, onboard_temp):
     with open(filename, 'w') as htmlfile:
         htmlfile.write(f"""<html>
 <head>
-<title>Temperatur und Luftfeuchtigkeitsanzeige</title>
-<style>
-body {{
-    font-family: 'Arial', sans-serif;
-    background-color: #333;
-    color: #eee;
-    margin: 0;
-    padding: 20px;
-}}
-h1 {{
-    color: #ff9800;
-}}
-table {{
-    width: 100%;
-    border-collapse: collapse;
-}}
-th, td {{
-    text-align: left;
-    padding: 8px;
-    border-bottom: 1px solid #ddd;
-}}
-th {{
-    background-color: #555;
-    color: #fff;
-}}
-tr:hover {{background-color: #444;}}
-</style>
+<title>Temperaturanzeige</title>
+<!-- Stildefinitionen bleiben gleich -->
 </head>
 <body>
 <h1>Aktuelle Messwerte</h1>
@@ -69,18 +100,9 @@ tr:hover {{background-color: #444;}}
     <th>Onboard Temperatur</th>
     <td>{onboard_temp} °C</td>
 </tr>
-<tr>
-    <th>Externe Temperatur</th>
-    <td>{external_temp} °C</td>
-</tr>
-<tr>
-    <th>Luftfeuchtigkeit</th>
-    <td>{humidity} %</td>
-</tr>
 </table>
 </body>
 </html>""")
-
 
 
 # Funktion zum Starten des Servers
@@ -97,6 +119,19 @@ def send_404(client):
     client.send(response.encode("utf-8"))
     client.close()
 
+
+def send_html_page(client):
+    # Verwende die globale Variable für die Antwort
+    if latest_onboard_temp is not None:
+        write_html('index.html', latest_onboard_temp)
+        # Öffnen der index.html Datei und Senden als HTTP-Antwort
+        with open('index.html', 'rb') as f:
+            response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + f.read()
+            client.send(response)
+    else:
+        # Senden einer Fehlermeldung oder einer Warte-Seite, falls keine Daten verfügbar sind
+        pass
+
 # Funktion zum Empfangen und Verarbeiten von Anfragen
 def handle_requests(s):
     while True:
@@ -109,37 +144,18 @@ def handle_requests(s):
         if method == "GET":
             if path == "/":
                 send_html_page(cl)
-            elif path == "/api/sensordata":  # Hinzufügen dieses Pfads
+            elif path == "/api/sensordata":
                 send_sensor_data(cl)
+            elif path == "/api/csvdata":  # Neue Bedingung für die CSV-Daten
+                send_csv_data(cl)  # Du musst diese Funktion implementieren
             else:
-                send_404(cl)  # Du musst sicherstellen, dass diese Funktion implementiert ist.
+                send_404(cl)
         cl.close()
 
-def send_sensor_data(client):
-    data = {
-        "onboard_temp": latest_onboard_temp,
-        "external_temp": latest_external_temp,
-        "humidity": latest_humidity
-    }
-    response = json.dumps(data)
-    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
+        
     client.close()
 
-# Funktion zum Senden der HTML-Seite
-def send_html_page(client):
-    # Stelle sicher, dass diese Funktion die zuletzt gemessenen Werte verwendet,
-    # die von `read_sensors_and_write_to_csv` aktualisiert wurden.
-    # Angenommen, `latest_onboard_temp`, `latest_external_temp` und `latest_humidity`
-    # sind die globalen Variablen, die die neuesten Werte speichern.
-    
-    # HTML-Seite mit den neuesten Messwerten erstellen
-    write_html('index.html', latest_onboard_temp, latest_external_temp, latest_humidity)
-    
-    # Öffnen der index.html Datei und Senden als HTTP-Antwort
-    with open('index.html', 'rb') as f:
-        response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + f.read()
-        client.send(response)
-    client.close()
+
 
 
 # Timer für die Temperaturmessung alle 3 Sekunden initialisieren
@@ -148,54 +164,6 @@ latest_onboard_temp = None
 latest_external_temp = None
 latest_humidity = None
 
-def read_sensors_and_write_to_csv(timer):
-    global latest_onboard_temp, latest_external_temp, latest_humidity
-    # Aktuelle Uhrzeit erfassen
-    current_time = utime.localtime()
-    date = format_datetime_custom(current_time)
-    
-    # Onboard-Temperatur-Sensor als Dezimalzahl lesen und umrechnen
-    read_onboard = sensor_temp.read_u16()
-    voltage = read_onboard * conversion_factor
-    onboard_temp = 27 - (voltage - 0.706) / 0.001721
-    
-    # DHT11-Sensor lesen (mit Fehlerbehandlung, falls notwendig)
-    try:
-        dht11_sensor.measure()
-        external_temp = dht11_sensor.temperature()
-        humidity = dht11_sensor.humidity()
-    except OSError:
-        # Optionale Fehlerbehandlung
-        print("Fehler beim Lesen des DHT11-Sensors")
-        return
-    
-    # Aktualisiere globale Variablen mit den neuesten Werten
-    latest_onboard_temp = onboard_temp
-    latest_external_temp = external_temp
-    latest_humidity = humidity
-    
-    # Printen der Daten in der Ausgabe
-    print("Datum: ", date)
-    print("Onboard Temperatur (°C): ", onboard_temp)
-    print("Externe Temperatur (°C): ", external_temp)
-    print("Luftfeuchtigkeit (%): ", humidity)
-    
-    # Schreibe die Daten in die CSV-Datei und aktualisiere ggf. die HTML-Seite
-    write_csv('Temperatur_und_Luftfeuchtigkeit.csv', date, onboard_temp, external_temp, humidity)
-    # Die write_html Funktion nicht hier aufrufen, da sie bei Serveranfragen aufgerufen wird
-
-def send_html_page(client):
-    # Verwende die globalen Variablen für die Antwort
-    if latest_onboard_temp is not None and latest_external_temp is not None and latest_humidity is not None:
-        write_html('index.html', latest_onboard_temp, latest_external_temp, latest_humidity)
-        # Öffnen der index.html Datei und Senden als HTTP-Antwort
-        with open('index.html', 'rb') as f:
-            response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + f.read()
-            client.send(response)
-    else:
-        # Senden einer Fehlermeldung oder einer Warte-Seite, falls keine Daten verfügbar sind
-        pass
-    client.close()
 
 # Timer für die Messung aller Sensordaten alle 3 Sekunden initialisieren
 temperature_timer = Timer(-1)
