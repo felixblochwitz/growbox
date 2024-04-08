@@ -24,5 +24,3 @@ Welche Funktionalität soll Pico haben:
 
 ### Steuerung der Growbox
 - Optimalerweise über eine App
-
-#TEST
