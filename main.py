@@ -5,14 +5,11 @@ import socket
 from time import sleep
 import json  # Dieser Import fehlte
 
-# Initialisierung des ADC4 für den Onboard-Temperatursensor
-sensor_temp = ADC(4)
-conversion_factor = 3.3 / (65535)
-
 def format_datetime_custom(dt):
     year, month, day, hour, minute, second, _, _ = dt
     return "{:04d}/{:02d}/{:02d}-{:02d}:{:02d}:{:02d}".format(year, month, day, hour, minute, second)
 
+#### code for csv creation and sending
 def read_csv(filename, n=5):
     with open(filename, 'r') as file:
         lines = []
@@ -33,26 +30,6 @@ def read_csv(filename, n=5):
 def write_csv(filename, date, onboard_temp):
     with open(filename, 'a') as csvfile:
         csvfile.write(f"{date},{onboard_temp}\n")  # Entfernen von external_temp und humidity
-
-def send_csv_data(client):
-    print("here")
-    data = read_csv('Temperatur_und_Luftfeuchtigkeit.csv', 5)  # Lese die letzten 5 Zeilen
-    response = json.dumps(data)
-    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
-    client.close()
-        
-def send_sensor_data(client):
-    data = {
-        "onboard_temp": latest_onboard_temp,
-        "external_temp": latest_external_temp,
-        "humidity": latest_humidity
-    }
-    response = json.dumps(data)
-    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
-    client.close()
-
-# Globale Variablen für die zuletzt gemessenen Werte
-latest_onboard_temp = None
 
 def read_sensors_and_write_to_csv(timer):
     global latest_onboard_temp, latest_external_temp, latest_humidity
@@ -78,31 +55,25 @@ def read_sensors_and_write_to_csv(timer):
     write_csv('Temperatur_und_Luftfeuchtigkeit.csv', date, onboard_temp)
     # Die write_html Funktion nicht hier aufrufen, da sie bei Serveranfragen aufgerufen wird
 
+def send_csv_data(client):
+    print("here")
+    data = read_csv('Temperatur_und_Luftfeuchtigkeit.csv', 5)  # Lese die letzten 5 Zeilen
+    response = json.dumps(data)
+    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
+    client.close()
 
+        
+#### sending sensor data to api
+def send_sensor_data(client):
+    data = {
+        "onboard_temp": latest_onboard_temp,
+        "external_temp": latest_external_temp,
+        "humidity": latest_humidity
+    }
+    response = json.dumps(data)
+    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
+    client.close()
 
-
-# Angepasste Funktion zum Schreiben in eine HTML-Datei
-def write_html(filename, onboard_temp):
-    with open(filename, 'w') as htmlfile:
-        htmlfile.write(f"""<html>
-<head>
-<title>Temperaturanzeige</title>
-<!-- Stildefinitionen bleiben gleich -->
-</head>
-<body>
-<h1>Aktuelle Messwerte</h1>
-<table>
-<tr>
-    <th>Datum und Uhrzeit</th>
-    <td>{format_datetime_custom(utime.localtime())}</td>
-</tr>
-<tr>
-    <th>Onboard Temperatur</th>
-    <td>{onboard_temp} °C</td>
-</tr>
-</table>
-</body>
-</html>""")
 
 
 # Funktion zum Starten des Servers
@@ -114,23 +85,43 @@ def start_server():
     print('Server gestartet. Warte auf Verbindung...')
     return s
 
-def send_404(client):
-    response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found"
-    client.send(response.encode("utf-8"))
-    client.close()
+        
+#### creating and sending html page to server
+def write_html(filename, onboard_temp):
+    with open(filename, "r") as f:
+        html_template = f.read()
+        datetime_str = format_datetime_custom(utime.localtime())
+        html_output = html_template.replace("{onboard_temp}", str(onboard_temp))
+        html_output = html_output.replace("{datetime}", datetime_str)
+        return html_output
+
+def generate_html_response(content):
+    response = (
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: {}\r\n"
+        "\r\n"
+        "{}"
+    )
+    print(response)
+    return response.format(len(content), content)
 
 
 def send_html_page(client):
     # Verwende die globale Variable für die Antwort
     if latest_onboard_temp is not None:
-        write_html('index.html', latest_onboard_temp)
+        html_output = write_html('assets/index.html', latest_onboard_temp)
         # Öffnen der index.html Datei und Senden als HTTP-Antwort
-        with open('index.html', 'rb') as f:
-            response = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n" + f.read()
-            client.send(response)
+        response = generate_html_response(html_output)
+        client.send(response)
     else:
         # Senden einer Fehlermeldung oder einer Warte-Seite, falls keine Daten verfügbar sind
         pass
+
+def send_404(client):
+    response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found"
+    client.send(response.encode("utf-8"))
+    client.close()
 
 # Funktion zum Empfangen und Verarbeiten von Anfragen
 def handle_requests(s):
@@ -155,7 +146,9 @@ def handle_requests(s):
         
     client.close()
 
-
+# Initialisierung des ADC4 für den Onboard-Temperatursensor
+sensor_temp = ADC(4)
+conversion_factor = 3.3 / (65535)
 
 
 # Timer für die Temperaturmessung alle 3 Sekunden initialisieren
@@ -174,8 +167,10 @@ ssid = "Livebox-D876"
 password = "cWukttZUsmr9tHaokP"
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
+wlan.scan()
 wlan.connect(ssid, password)
 max_wait = 10
+
 while max_wait > 0:
     if wlan.status() < 0 or wlan.status() >= 3:
         break
