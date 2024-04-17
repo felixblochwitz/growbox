@@ -7,7 +7,7 @@ import json  # Dieser Import fehlte
 
 def format_datetime_custom(dt):
     year, month, day, hour, minute, second, _, _ = dt
-    return "{:04d}/{:02d}/{:02d}-{:02d}:{:02d}:{:02d}".format(year, month, day, hour, minute, second)
+    return "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(year, month, day, hour, minute, second)
 
 #### code for csv creation and sending
 def read_csv(filename, n=5):
@@ -28,8 +28,18 @@ def read_csv(filename, n=5):
 
 # Anpassung der Funktion zum Schreiben in eine CSV-Datei
 def write_csv(filename, date, onboard_temp):
-    with open(filename, 'a') as csvfile:
-        csvfile.write(f"{date},{onboard_temp}\n")  # Entfernen von external_temp und humidity
+    max_rows = 100
+    print(filename)
+    with open(filename, "r") as csv_file:
+        lines = csv_file.readlines()
+
+    if len(lines) >= max_rows:
+        lines = lines[-(max_rows-1):]
+
+    with open(filename, 'w') as csv_file:
+        for line in lines:
+            csv_file.write(line)
+        csv_file.write(f"{date},{onboard_temp}\n")  # Entfernen von external_temp und humidity
 
 def read_sensors_and_write_to_csv(timer):
     global latest_onboard_temp, latest_external_temp, latest_humidity
@@ -52,11 +62,10 @@ def read_sensors_and_write_to_csv(timer):
     print("Onboard Temperatur (°C): ", onboard_temp)
 
     # Schreibe die Daten in die CSV-Datei und aktualisiere ggf. die HTML-Seite
-    write_csv('Temperatur_und_Luftfeuchtigkeit.csv', date, onboard_temp)
+    write_csv('data/measurements.csv', date, onboard_temp)
     # Die write_html Funktion nicht hier aufrufen, da sie bei Serveranfragen aufgerufen wird
 
 def send_csv_data(client):
-    print("here")
     data = read_csv('Temperatur_und_Luftfeuchtigkeit.csv', 5)  # Lese die letzten 5 Zeilen
     response = json.dumps(data)
     client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
@@ -65,10 +74,11 @@ def send_csv_data(client):
         
 #### sending sensor data to api
 def send_sensor_data(client):
+    from datetime import datetime
+    
     data = {
-        "onboard_temp": latest_onboard_temp,
-        "external_temp": latest_external_temp,
-        "humidity": latest_humidity
+        "date_time": datetime.now().strfmt("%Y-%d-%m %H:%M:%S"),
+        "onboard_temp": latest_onboard_temp
     }
     response = json.dumps(data)
     client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
@@ -95,16 +105,15 @@ def write_html(filename, onboard_temp):
         html_output = html_output.replace("{datetime}", datetime_str)
         return html_output
 
-def generate_html_response(content):
+def generate_response(content_type, content):
     response = (
         "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/html\r\n"
+        "Content-Type: {}\r\n"
         "Content-Length: {}\r\n"
         "\r\n"
         "{}"
     )
-    print(response)
-    return response.format(len(content), content)
+    return response.format(content_type, len(content), content)
 
 
 def send_html_page(client):
@@ -112,11 +121,29 @@ def send_html_page(client):
     if latest_onboard_temp is not None:
         html_output = write_html('assets/index.html', latest_onboard_temp)
         # Öffnen der index.html Datei und Senden als HTTP-Antwort
-        response = generate_html_response(html_output)
+        response = generate_response("text/html", html_output)
         client.send(response)
     else:
         # Senden einer Fehlermeldung oder einer Warte-Seite, falls keine Daten verfügbar sind
         pass
+
+def send_file(client, file_path):
+    import os
+    try:
+        with open(file_path, "r") as file:
+            content = file.read()
+            if file_path.endswith(".css"):
+                content_type = "text/css"
+            elif file_path.endswith(".js"):
+                content_type = "text/javascript"
+            elif file_path.endswith(".csv"):
+                content_type = "text/csv"
+            else:
+                content_type = "text/plain"
+            response = generate_response(content_type, content)
+            client.send(response.encode())
+    except FileNotFoundError:
+        send_404(client)
 
 def send_404(client):
     response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found"
@@ -130,11 +157,18 @@ def handle_requests(s):
         print('Client verbunden von', addr)
         request = cl.recv(1024).decode("utf-8")
         request_line = request.split("\r\n")[0]
+        print(request_line)
         method, path, _ = request_line.split(" ")
 
         if method == "GET":
             if path == "/":
                 send_html_page(cl)
+            elif path.startswith("/assets/"):
+                file_path = path[1:] # remove leading "/"
+                send_file(cl, file_path)
+            elif path.startswith("/data/"):
+                file_path = path[1:]
+                send_file(cl, file_path)
             elif path == "/api/sensordata":
                 send_sensor_data(cl)
             elif path == "/api/csvdata":  # Neue Bedingung für die CSV-Daten
@@ -163,8 +197,8 @@ temperature_timer = Timer(-1)
 temperature_timer.init(period=5000, mode=Timer.PERIODIC, callback=read_sensors_and_write_to_csv)
 
 # WLAN-Verbindung herstellen
-ssid = "Livebox-D876"
-password = "cWukttZUsmr9tHaokP"
+ssid = "FRITZ!Box 5530 MY"
+password = "99727768816312159273"
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 wlan.scan()
