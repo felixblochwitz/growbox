@@ -29,7 +29,6 @@ def read_csv(filename, n=5):
 # Anpassung der Funktion zum Schreiben in eine CSV-Datei
 def write_csv(filename, date, onboard_temp):
     max_rows = 100
-    print(filename)
     with open(filename, "r") as csv_file:
         lines = csv_file.readlines()
 
@@ -157,7 +156,6 @@ def handle_requests(s):
         print('Client verbunden von', addr)
         request = cl.recv(1024).decode("utf-8")
         request_line = request.split("\r\n")[0]
-        print(request_line)
         method, path, _ = request_line.split(" ")
 
         if method == "GET":
