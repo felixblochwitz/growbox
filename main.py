@@ -5,8 +5,9 @@ import socket
 from time import sleep
 import json  # Dieser Import fehlte
 
-def format_datetime_custom(dt):
-    year, month, day, hour, minute, second, _, _ = dt
+def create_time_stamp_string():
+    current = utime.localtime()
+    year, month, day, hour, minute, second, _, _ = current
     return "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(year, month, day, hour, minute, second)
 
 #### code for csv creation and sending
@@ -43,8 +44,7 @@ def write_csv(filename, date, onboard_temp):
 def read_sensors_and_write_to_csv(timer):
     global latest_onboard_temp, latest_external_temp, latest_humidity
     # Aktuelle Uhrzeit erfassen
-    current_time = utime.localtime()
-    date = format_datetime_custom(current_time)
+    date = create_time_stamp_string()
     
     # Onboard-Temperatur-Sensor als Dezimalzahl lesen und umrechnen
     read_onboard = sensor_temp.read_u16()
@@ -73,7 +73,6 @@ def send_csv_data(client):
         
 #### sending sensor data to api
 def send_sensor_data(client):
-    from datetime import datetime
     
     data = {
         "date_time": datetime.now().strfmt("%Y-%d-%m %H:%M:%S"),
@@ -99,7 +98,7 @@ def start_server():
 def write_html(filename, onboard_temp):
     with open(filename, "r") as f:
         html_template = f.read()
-        datetime_str = format_datetime_custom(utime.localtime())
+        datetime_str = create_time_stamp_string()
         html_output = html_template.replace("{onboard_temp}", str(onboard_temp))
         html_output = html_output.replace("{datetime}", datetime_str)
         return html_output
@@ -156,6 +155,7 @@ def handle_requests(s):
         print('Client verbunden von', addr)
         request = cl.recv(1024).decode("utf-8")
         request_line = request.split("\r\n")[0]
+        print(f"Request Line: {request_line}")
         method, path, _ = request_line.split(" ")
 
         if method == "GET":
