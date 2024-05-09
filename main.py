@@ -6,9 +6,10 @@ from time import sleep
 import json
 import dht
 
-def format_datetime_custom(dt):
-    year, month, day, hour, minute, second, _, _ = dt
-    return "{:04d}/{:02d}/{:02d}-{:02d}:{:02d}:{:02d}".format(year, month, day, hour, minute, second)
+def create_time_stamp_string():
+    current = utime.localtime()
+    year, month, day, hour, minute, second, _, _ = current
+    return "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(year, month, day, hour, minute, second)
 
 # Initialisieren des DHT22-Sensors
 sensor = dht.DHT22(machine.Pin(15))
@@ -47,8 +48,7 @@ def write_csv(filename, date, onboard_temp, external_temp, humidity, soil_moistu
 
 def read_sensors_and_write_to_csv(timer):
     global latest_onboard_temp, latest_external_temp, latest_humidity, latest_soil_moisture1, latest_soil_moisture2
-    current_time = utime.localtime()
-    date = format_datetime_custom(current_time)
+    date = create_time_stamp_string()
 
     read_onboard = sensor_temp.read_u16()
     voltage = read_onboard * conversion_factor
@@ -116,7 +116,7 @@ def start_server():
 def write_html(filename, onboard_temp, external_temp, humidity, soil_moisture1, soil_moisture2):
     with open(filename, "r") as f:
         html_template = f.read()
-        datetime_str = format_datetime_custom(utime.localtime())
+        datetime_str = create_time_stamp_string()
         html_output = html_template.replace("{datetime}", datetime_str)
 
         # Hier runden wir die Werte, bevor wir sie in das HTML einfügen
