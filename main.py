@@ -30,7 +30,7 @@ def read_soil_moisture():
     moisture_percentage2 = (1 - value2 / 65535) * 100
     return moisture_percentage1, moisture_percentage2
 
-
+#### code for csv creation and sending
 def read_csv(filename, n=5):
     with open(filename, "r") as file:
         lines = file.readlines()[-n:]
@@ -150,6 +150,7 @@ def send_sensor_data(client):
     client.close()
 
 
+
 def start_server():
     addr = socket.getaddrinfo("0.0.0.0", 80)[0][-1]
     s = socket.socket()
@@ -229,11 +230,18 @@ def handle_requests(s):
         print("Client verbunden von", addr)
         request = cl.recv(1024).decode("utf-8")
         request_line = request.split("\r\n")[0]
+        print(f"Request Line: {request_line}")
         method, path, _ = request_line.split(" ")
 
         if method == "GET":
             if path == "/":
                 send_html_page(cl)
+            elif path.startswith("/assets/"):
+                file_path = path[1:] # remove leading "/"
+                send_file(cl, file_path)
+            elif path.startswith("/data/"):
+                file_path = path[1:]
+                send_file(cl, file_path)
             elif path == "/api/sensordata":
                 send_sensor_data(cl)
             elif path == "/api/csvdata":
@@ -257,8 +265,11 @@ temperature_timer.init(
     period=5000, mode=Timer.PERIODIC, callback=read_sensors_and_write_to_csv
 )
 
-ssid = "FRITZ!Box 7530 OW"
-password = "monkey-gin!"
+
+# WLAN-Verbindung herstellen
+ssid = "FRITZ!Box 5530 MY"
+password = "99727768816312159273"
+
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 wlan.scan()

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Temperatur und Luftfeuchtigkeitsanzeige</title>
+    <link rel="stylesheet" href="assets/style.css" />
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"
+      integrity="sha512-dfX5uYVXzyU8+KHqj8bjo7UkOdg18PaOtpa48djpNbZHwExddghZ+ZmzWT06R5v6NSk3ZUfsH6FNEDepLx9hPQ=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+    <script
+      src="https://cdn.plot.ly/plotly-2.30.0.min.js"
+      charset="utf-8"
+    ></script>
+    <script defer src="assets/chart.js"></script>
+  </head>
+  <body>
+    <h1>Aktuelle Messwerte</h1>
+    <table>
+      <tr>
+        <th>Datum und Uhrzeit</th>
+        <td>{datetime}</td>
+      </tr>
+      <tr>
+        <th>Onboard Temperatur</th>
+        <td>{onboard_temp} °C</td>
+      </tr>
+    </table>
+    <div id="chart-container"></div>
+  </body>
+</html>
