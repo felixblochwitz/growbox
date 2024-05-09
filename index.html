@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interaktiver Graph mit Plotly im Dunklen Design</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #333; /* Dunkler Hintergrund */
+            color: #fff; /* Helle Schrift */
+        }
+        #dashboard {
+            display: flex;
+            justify-content: space-around;
+            padding: 20px;
+        }
+        .data-box {
+            background-color: #444; /* Dunkler Hintergrund für die Kästchen */
+            border-radius: 10px;
+            padding: 10px 20px;
+            text-align: center;
+            width: 18%; /* Damit alle gleich breit sind und zusammenpassen */
+        }
+        .data-box h3 {
+            margin: 10px 0;
+            font-size: 1.2em;
+            color: #FFD700; /* Goldene Schrift für die Titel */
+        }
+        .data-box p {
+            font-size: 1.6em;
+            margin: 5px 0;
+        }
+        .plotly-graph {
+            width: 100%;
+            height: 400px; /* Höhe des Graphen-Containers */
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="dashboard">
+    <div class="data-box">
+        <h3>Onboard Temp</h3>
+        <p id="latest-onboard-temp">-- °C</p>
+    </div>
+    <div class="data-box">
+        <h3>Externe Temp</h3>
+        <p id="latest-external-temp">-- °C</p>
+    </div>
+    <div class="data-box">
+        <h3>Luftfeuchtigkeit</h3>
+        <p id="latest-humidity">-- %</p>
+    </div>
+    <div class="data-box">
+        <h3>Bodenfeuchtigkeit 1</h3>
+        <p id="latest-soil-moisture1">-- %</p>
+    </div>
+    <div class="data-box">
+        <h3>Bodenfeuchtigkeit 2</h3>
+        <p id="latest-soil-moisture2">-- %</p>
+    </div>
+</div>
+
+<div id="plotly-onboard-temp" class="plotly-graph"></div>
+<div id="plotly-external-temp" class="plotly-graph"></div>
+<div id="plotly-humidity" class="plotly-graph"></div>
+<div id="plotly-soil-moisture1" class="plotly-graph"></div>
+<div id="plotly-soil-moisture2" class="plotly-graph"></div>
+
+<script>
+// URL zur JSON-Datenquelle, die von Ihrer Python-Serveranwendung bereitgestellt wird
+const dataUrl = '/api/csvdata';
+
+// Funktion zum Laden der JSON-Daten und zum Zeichnen des Graphen
+async function loadAndPlotData() {
+    try {
+        // Lade die JSON-Daten
+        const response = await fetch(dataUrl);
+        const data = await response.json();
+
+        // Aktualisiere die Kästchen mit den zuletzt gemessenen Werten
+        const latestData = data[data.length - 1]; // Nehme das letzte Element der Datenreihe
+        document.getElementById('latest-onboard-temp').textContent = latestData.onboard_temp + ' °C';
+        document.getElementById('latest-external-temp').textContent = latestData.external_temp + ' °C';
+        document.getElementById('latest-humidity').textContent = latestData.humidity + ' %';
+        document.getElementById('latest-soil-moisture1').textContent = latestData.soil_moisture1 + ' %';
+        document.getElementById('latest-soil-moisture2').textContent = latestData.soil_moisture2 + ' %';
+
+        // Gemeinsame Layout-Konfiguration
+        const commonLayout = {
+            plot_bgcolor: "#333",  // Dunkler Hintergrund für den Graphen
+            paper_bgcolor: "#333", // Dunkler Hintergrund für das Papier
+            font: {
+                color: "#fff" // Helle Schrift
+            },
+            margin: {t: 40, b: 40, l: 60, r: 20}, // Margin anpassen
+            xaxis: {
+                title: 'Datum und Uhrzeit',
+                autorange: true,
+                color: '#ddd'  // Helle Schrift für Achsen
+            },
+            yaxis: {
+                autorange: true,
+                color: '#ddd'  // Helle Schrift für Achsen
+            }
+        };
+
+        // Erstelle den Onboard-Temperatur Graphen
+        Plotly.newPlot('plotly-onboard-temp', [{
+            x: data.map(entry => entry.date),
+            y: data.map(entry => entry.onboard_temp),
+            name: 'Onboard Temperatur',
+            type: 'scatter',
+            mode: 'lines+markers',
+            marker: {color: 'red'}
+        }], {...commonLayout, title: 'Onboard Temperatur'});
+
+        // Erstelle den Externe-Temperatur Graphen
+        Plotly.newPlot('plotly-external-temp', [{
+            x: data.map(entry => entry.date),
+            y: data.map(entry => entry.external_temp),
+            name: 'Externe Temperatur',
+            type: 'scatter',
+            mode: 'lines+markers',
+            marker: {color: 'blue'}
+        }], {...commonLayout, title: 'Externe Temperatur'});
+
+        // Erstelle den Luftfeuchtigkeit Graphen
+        Plotly.newPlot('plotly-humidity', [{
+            x: data.map(entry => entry.date),
+            y: data.map(entry => entry.humidity),
+            name: 'Luftfeuchtigkeit',
+            type: 'scatter',
+            mode: 'lines+markers',
+            marker: {color: 'green'}
+        }], {...commonLayout, title: 'Luftfeuchtigkeit'});
+
+        // Erstelle den Bodenfeuchtigkeit 1 Graphen
+        Plotly.newPlot('plotly-soil-moisture1', [{
+            x: data.map(entry => entry.date),
+            y: data.map(entry => entry.soil_moisture1),
+            name: 'Bodenfeuchtigkeit 1',
+            type: 'scatter',
+            mode: 'lines+markers',
+            marker: {color: 'orange'}
+        }], {...commonLayout, title: 'Bodenfeuchtigkeit 1'});
+
+        // Erstelle den Bodenfeuchtigkeit 2 Graphen
+        Plotly.newPlot('plotly-soil-moisture2', [{
+            x: data.map(entry => entry.date),
+            y: data.map(entry => entry.soil_moisture2),
+            name: 'Bodenfeuchtigkeit 2',
+            type: 'scatter',
+            mode: 'lines+markers',
+            marker: {color: 'purple'}
+        }], {...commonLayout, title: 'Bodenfeuchtigkeit 2'});
+    } catch (error) {
+        console.error('Fehler beim Laden der Daten:', error);
+    }
+}
+
+// Rufe die Funktion zum Laden und Zeichnen der Daten auf
+loadAndPlotData();
+</script>
+
+</body>
+</html>

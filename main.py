@@ -3,156 +3,215 @@ import utime
 import network
 import socket
 from time import sleep
-import json  # Dieser Import fehlte
+import json
+import dht
+
 
 def create_time_stamp_string():
     current = utime.localtime()
     year, month, day, hour, minute, second, _, _ = current
-    return "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(year, month, day, hour, minute, second)
+    return "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
+        year, month, day, hour, minute, second
+    )
 
 #### code for csv creation and sending
 def read_csv(filename, n=5):
-    with open(filename, 'r') as file:
-        lines = []
-        for line in file:
-            if len(lines) >= n:
-                lines.pop(0)
-            lines.append(line.strip())
+    with open(filename, "r") as file:
+        lines = file.readlines()[-n:]
     data = []
     for line in lines:
-        date, onboard_temp = line.split(',')[:2]  # Anpassung hier
-        data.append({
-            "date": date,
-            "onboard_temp": float(onboard_temp),
-        })
+        parts = line.strip().split(",")
+        date, onboard_temp, external_temp, humidity, soil_moisture1, soil_moisture2 = (
+            parts
+        )
+        data.append(
+            {
+                "date": date,
+                "onboard_temp": float(onboard_temp),
+                "external_temp": float(external_temp),
+                "humidity": float(humidity),
+                "soil_moisture1": float(soil_moisture1),
+                "soil_moisture2": float(soil_moisture2),
+            }
+        )
     return data
 
-# Anpassung der Funktion zum Schreiben in eine CSV-Datei
-def write_csv(filename, date, onboard_temp):
+def write_csv(
+    filename,
+    date,
+    onboard_temp,
+    external_temp,
+    humidity,
+    soil_moisture1,
+    soil_moisture2,
+):
     max_rows = 100
     with open(filename, "r") as csv_file:
         lines = csv_file.readlines()
 
     if len(lines) >= max_rows:
-        lines = lines[-(max_rows-1):]
+        lines = lines[-(max_rows - 1) :]
 
-    with open(filename, 'w') as csv_file:
+    with open(filename, "w") as csv_file:
         for line in lines:
             csv_file.write(line)
-        csv_file.write(f"{date},{onboard_temp}\n")  # Entfernen von external_temp und humidity
+        csv_file.write(
+            f"{date},{onboard_temp}, {external_temp}, {humidity}, {soil_moisture1}, {soil_moisture2}\n"
+        )
 
 def read_sensors_and_write_to_csv(timer):
-    global latest_onboard_temp, latest_external_temp, latest_humidity
-    # Aktuelle Uhrzeit erfassen
+    global latest_onboard_temp, latest_external_temp, latest_humidity, latest_soil_moisture1, latest_soil_moisture2
     date = create_time_stamp_string()
-    
-    # Onboard-Temperatur-Sensor als Dezimalzahl lesen und umrechnen
+
     read_onboard = sensor_temp.read_u16()
     voltage = read_onboard * conversion_factor
     onboard_temp = 27 - (voltage - 0.706) / 0.001721
-    
-    
-    # Aktualisiere globale Variablen mit den neuesten Werten
+
+    # Runden der Onboard-Temperatur
+    onboard_temp = round(onboard_temp)
+
+    sensor.measure()
+    external_temp = sensor.temperature()
+    humidity = sensor.humidity()
+
+    # Runden der externen Temperatur und Luftfeuchtigkeit
+    external_temp = round(external_temp)
+    humidity = round(humidity)
+
+    soil_moisture1, soil_moisture2 = read_soil_moisture()
+
+    # Runden der Bodenfeuchtigkeitswerte
+    soil_moisture1 = round(soil_moisture1)
+    soil_moisture2 = round(soil_moisture2)
+
     latest_onboard_temp = onboard_temp
+    latest_external_temp = external_temp
+    latest_humidity = humidity
+    latest_soil_moisture1 = soil_moisture1
+    latest_soil_moisture2 = soil_moisture2
 
-    
-    # Printen der Daten in der Ausgabe
-    print("Datum: ", date)
-    print("Onboard Temperatur (°C): ", onboard_temp)
+    print(f"Datum: {date}")
+    print(f"Onboard Temperatur (°C): {onboard_temp}")
+    print(f"Externe Temperatur (°C): {external_temp}")
+    print(f"Luftfeuchtigkeit (%): {humidity}")
+    print(f"Bodenfeuchtigkeit 1 (%): {soil_moisture1}")
+    print(f"Bodenfeuchtigkeit 2 (%): {soil_moisture2}")
 
-    # Schreibe die Daten in die CSV-Datei und aktualisiere ggf. die HTML-Seite
-    write_csv('data/measurements.csv', date, onboard_temp)
-    # Die write_html Funktion nicht hier aufrufen, da sie bei Serveranfragen aufgerufen wird
+    write_csv(
+        "Temperatur_und_Luftfeuchtigkeit.csv",
+        date,
+        onboard_temp,
+        external_temp,
+        humidity,
+        soil_moisture1,
+        soil_moisture2,
+    )
+
 
 def send_csv_data(client):
-    data = read_csv('Temperatur_und_Luftfeuchtigkeit.csv', 5)  # Lese die letzten 5 Zeilen
+    data = read_csv("Temperatur_und_Luftfeuchtigkeit.csv", 5)
     response = json.dumps(data)
-    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
+    client.send(
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+        + response.encode("utf-8")
+    )
     client.close()
 
-        
-#### sending sensor data to api
+
 def send_sensor_data(client):
-    
     data = {
-        "date_time": datetime.now().strfmt("%Y-%d-%m %H:%M:%S"),
-        "onboard_temp": latest_onboard_temp
+        "onboard_temp": latest_onboard_temp,
+        "external_temp": latest_external_temp,
+        "humidity": latest_humidity,
+        "soil_moisture1": latest_soil_moisture1,
+        "soil_moisture2": latest_soil_moisture2,
     }
     response = json.dumps(data)
-    client.send(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" + response.encode('utf-8'))
+    client.send(
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+        + response.encode("utf-8")
+    )
     client.close()
 
 
 
-# Funktion zum Starten des Servers
 def start_server():
-    addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
+    addr = socket.getaddrinfo("0.0.0.0", 80)[0][-1]
     s = socket.socket()
     s.bind(addr)
     s.listen(1)
-    print('Server gestartet. Warte auf Verbindung...')
+    print("Server gestartet. Warte auf Verbindung...")
     return s
 
-        
-#### creating and sending html page to server
-def write_html(filename, onboard_temp):
+
+def write_html(
+    filename, onboard_temp, external_temp, humidity, soil_moisture1, soil_moisture2
+):
     with open(filename, "r") as f:
         html_template = f.read()
         datetime_str = create_time_stamp_string()
-        html_output = html_template.replace("{onboard_temp}", str(onboard_temp))
-        html_output = html_output.replace("{datetime}", datetime_str)
+        html_output = html_template.replace("{datetime}", datetime_str)
+
+        # Hier runden wir die Werte, bevor wir sie in das HTML einfügen
+        html_output = html_output.replace("{onboard_temp}", str(round(onboard_temp)))
+        html_output = html_output.replace("{external_temp}", str(round(external_temp)))
+        html_output = html_output.replace("{humidity}", str(round(humidity)))
+        html_output = html_output.replace(
+            "{soil_moisture1}", str(round(soil_moisture1))
+        )
+        html_output = html_output.replace(
+            "{soil_moisture2}", str(round(soil_moisture2))
+        )
+
         return html_output
 
-def generate_response(content_type, content):
+
+def generate_html_response(content):
     response = (
         "HTTP/1.1 200 OK\r\n"
-        "Content-Type: {}\r\n"
+        "Content-Type: text/html\r\n"
         "Content-Length: {}\r\n"
         "\r\n"
         "{}"
     )
-    return response.format(content_type, len(content), content)
+    print(response)
+    return response.format(len(content), content)
 
 
 def send_html_page(client):
-    # Verwende die globale Variable für die Antwort
-    if latest_onboard_temp is not None:
-        html_output = write_html('assets/index.html', latest_onboard_temp)
-        # Öffnen der index.html Datei und Senden als HTTP-Antwort
-        response = generate_response("text/html", html_output)
+    if (
+        latest_onboard_temp is not None
+        and latest_external_temp is not None
+        and latest_soil_moisture1 is not None
+        and latest_soil_moisture2 is not None
+        and latest_humidity is not None
+    ):
+        html_output = write_html(
+            "index.html",
+            latest_onboard_temp,
+            latest_external_temp,
+            latest_humidity,
+            latest_soil_moisture1,
+            latest_soil_moisture2,
+        )
+        response = generate_html_response(html_output)
         client.send(response)
     else:
-        # Senden einer Fehlermeldung oder einer Warte-Seite, falls keine Daten verfügbar sind
-        pass
+        response = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nInternal Server Error: Sensor data missing"
+        client.send(response.encode("utf-8"))
+    client.close()
 
-def send_file(client, file_path):
-    import os
-    try:
-        with open(file_path, "r") as file:
-            content = file.read()
-            if file_path.endswith(".css"):
-                content_type = "text/css"
-            elif file_path.endswith(".js"):
-                content_type = "text/javascript"
-            elif file_path.endswith(".csv"):
-                content_type = "text/csv"
-            else:
-                content_type = "text/plain"
-            response = generate_response(content_type, content)
-            client.send(response.encode())
-    except FileNotFoundError:
-        send_404(client)
 
 def send_404(client):
     response = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n\r\n404 Not Found"
     client.send(response.encode("utf-8"))
     client.close()
 
-# Funktion zum Empfangen und Verarbeiten von Anfragen
+
 def handle_requests(s):
     while True:
         cl, addr = s.accept()
-        print('Client verbunden von', addr)
+        print("Client verbunden von", addr)
         request = cl.recv(1024).decode("utf-8")
         request_line = request.split("\r\n")[0]
         print(f"Request Line: {request_line}")
@@ -169,34 +228,44 @@ def handle_requests(s):
                 send_file(cl, file_path)
             elif path == "/api/sensordata":
                 send_sensor_data(cl)
-            elif path == "/api/csvdata":  # Neue Bedingung für die CSV-Daten
-                send_csv_data(cl)  # Du musst diese Funktion implementieren
+            elif path == "/api/csvdata":
+                send_csv_data(cl)
             else:
                 send_404(cl)
         cl.close()
 
-        
-    client.close()
+# Initialisierung Sensoren
+sensor = dht.DHT22(machine.Pin(15))
 
-# Initialisierung des ADC4 für den Onboard-Temperatursensor
+adc1 = ADC(Pin(28))
+adc2 = ADC(Pin(27))
+
 sensor_temp = ADC(4)
 conversion_factor = 3.3 / (65535)
 
-
-# Timer für die Temperaturmessung alle 3 Sekunden initialisieren
-# Globale Variablen für die zuletzt gemessenen Werte
 latest_onboard_temp = None
 latest_external_temp = None
 latest_humidity = None
+latest_soil_moisture1 = None
+latest_soil_moisture2 = None
 
-
-# Timer für die Messung aller Sensordaten alle 3 Sekunden initialisieren
 temperature_timer = Timer(-1)
-temperature_timer.init(period=5000, mode=Timer.PERIODIC, callback=read_sensors_and_write_to_csv)
+temperature_timer.init(
+    period=5000, mode=Timer.PERIODIC, callback=read_sensors_and_write_to_csv
+)
+
+def read_soil_moisture():
+    value1 = adc1.read_u16()
+    value2 = adc2.read_u16()
+    moisture_percentage1 = (1 - value1 / 65535) * 100
+    moisture_percentage2 = (1 - value2 / 65535) * 100
+    return moisture_percentage1, moisture_percentage2
+
 
 # WLAN-Verbindung herstellen
 ssid = "FRITZ!Box 5530 MY"
 password = "99727768816312159273"
+
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 wlan.scan()
@@ -207,16 +276,15 @@ while max_wait > 0:
     if wlan.status() < 0 or wlan.status() >= 3:
         break
     max_wait -= 1
-    print('Warten auf Verbindung...')
+    print("Warten auf Verbindung...")
     sleep(1)
 
 if wlan.status() != 3:
-    raise RuntimeError('Netzwerkverbindung fehlgeschlagen')
+    raise RuntimeError("Netzwerkverbindung fehlgeschlagen")
 else:
-    print('Verbunden')
+    print("Verbunden")
     status = wlan.ifconfig()
-    print('IP-Adresse:', status[0])
+    print("IP-Adresse:", status[0])
 
-# Starten des Servers und Behandeln von Anfragen
 server = start_server()
 handle_requests(server)
