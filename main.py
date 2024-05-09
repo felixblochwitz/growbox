@@ -14,22 +14,6 @@ def create_time_stamp_string():
         year, month, day, hour, minute, second
     )
 
-
-# Initialisieren des DHT22-Sensors
-sensor = dht.DHT22(machine.Pin(15))
-
-# Initialisiere die ADCs für die Bodenfeuchtigkeitssensoren
-adc1 = ADC(Pin(28))
-adc2 = ADC(Pin(27))
-
-
-def read_soil_moisture():
-    value1 = adc1.read_u16()
-    value2 = adc2.read_u16()
-    moisture_percentage1 = (1 - value1 / 65535) * 100
-    moisture_percentage2 = (1 - value2 / 65535) * 100
-    return moisture_percentage1, moisture_percentage2
-
 #### code for csv creation and sending
 def read_csv(filename, n=5):
     with open(filename, "r") as file:
@@ -250,6 +234,11 @@ def handle_requests(s):
                 send_404(cl)
         cl.close()
 
+# Initialisierung Sensoren
+sensor = dht.DHT22(machine.Pin(15))
+
+adc1 = ADC(Pin(28))
+adc2 = ADC(Pin(27))
 
 sensor_temp = ADC(4)
 conversion_factor = 3.3 / (65535)
@@ -264,6 +253,13 @@ temperature_timer = Timer(-1)
 temperature_timer.init(
     period=5000, mode=Timer.PERIODIC, callback=read_sensors_and_write_to_csv
 )
+
+def read_soil_moisture():
+    value1 = adc1.read_u16()
+    value2 = adc2.read_u16()
+    moisture_percentage1 = (1 - value1 / 65535) * 100
+    moisture_percentage2 = (1 - value2 / 65535) * 100
+    return moisture_percentage1, moisture_percentage2
 
 
 # WLAN-Verbindung herstellen
